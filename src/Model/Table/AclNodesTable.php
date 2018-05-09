@@ -21,6 +21,7 @@ use Cake\ORM\Entity;
 use Cake\ORM\Query;
 use Cake\ORM\Table;
 use Cake\ORM\TableRegistry;
+use Cake\Utility\Inflector;
 
 /**
  * ACL Nodes
@@ -113,7 +114,8 @@ class AclNodesTable extends Table
             }
         } elseif (is_object($ref) && $ref instanceof Entity) {
             list(, $alias) = pluginSplit($ref->getSource());
-            $ref = ['model' => $alias, 'foreign_key' => $ref->id];
+            // Modification to support old CakePHP 2 filled AROS table with model's column in singular.
+            $ref = ['model IN' => [$alias, Inflector::singularize($alias)], 'foreign_key' => $ref->id];
         } elseif (is_array($ref) && !(isset($ref['model']) && isset($ref['foreign_key']))) {
             $name = key($ref);
             list(, $alias) = pluginSplit($name);
@@ -141,8 +143,9 @@ class AclNodesTable extends Table
                 $tmpRef = $entity->bindNode($ref);
             }
             if (empty($tmpRef)) {
+                // Modification to support old CakePHP 2 filled AROS table with model's column in singular.
                 $ref = [
-                    'model' => $alias,
+                    'model IN' => [$alias, Inflector::singularize($alias)],
                     'foreign_key' => $ref[$name][$this->getPrimaryKey()]
                 ];
             } else {
@@ -153,14 +156,21 @@ class AclNodesTable extends Table
             }
         }
         if (is_array($ref)) {
-            if (is_array(current($ref)) && is_string(key($ref))) {
+            if (is_array(current($ref)) && is_string(key($ref)) 
+                    && empty($ref['model IN']) // added to support old CakePHP 2 filled AROS table with model's column in singular.
+                    ) {
                 $name = key($ref);
                 $ref = current($ref);
             }
             foreach ($ref as $key => $val) {
                 if (strpos($key, $type) !== 0 && strpos($key, '.') === false) {
                     unset($ref[$key]);
-                    $ref["{$type}0.{$key}"] = $val;
+                    // Modification to support old CakePHP 2 filled AROS table with model's column in singular.
+                    if ($key == 'model') {
+                        $ref["{$type}0.{$key} IN"] = [$val, Inflector::singularize($val)];
+                    } else {
+                        $ref["{$type}0.{$key}"] = $val;
+                    }
                 }
             }
             $queryData = [
